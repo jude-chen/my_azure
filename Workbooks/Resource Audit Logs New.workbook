@@ -1,0 +1,164 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "parameters": [
+          {
+            "id": "c779e2ed-40ef-4143-b9b0-d89329e634fc",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": [
+              "/subscriptions/3ab3f568-ab27-413c-be5a-7a1cc89a8104"
+            ]
+          },
+          {
+            "id": "15f835c9-9c16-4ece-9fe8-65a73e9429b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Log_Analytics_Workspace",
+            "label": "Log Analytics Workspace",
+            "type": 5,
+            "isRequired": true,
+            "query": "resources\r\n| where type == \"microsoft.operationalinsights/workspaces\"\r\n| project id, name",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": "/subscriptions/3ab3f568-ab27-413c-be5a-7a1cc89a8104/resourceGroups/monitor/providers/Microsoft.OperationalInsights/workspaces/law-azuremonitor"
+          },
+          {
+            "id": "98c330d5-5348-442b-9b77-8a85a5ec0ae9",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource_Type",
+            "label": "Resource Type",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\r\n| where countof(type, '/') == 1\r\n| distinct type",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "[]",
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
+          },
+          {
+            "id": "ca97b832-053a-4a0c-a277-027ce027c93a",
+            "version": "KqlParameterItem/1.0",
+            "name": "Location",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\r\n| distinct location",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "selectAllValue": "[]",
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": [
+              "value::all"
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "parameters - 0"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\r\n| where countof(type, '/') == 1\r\n| where array_length(dynamic([{Resource_Type}])) == 0 or type in (dynamic([{Resource_Type}]))\r\n| where array_length(dynamic([{Location}])) == 0 or location in (dynamic([{Location}]))\r\n| project type, resourceGroup, location, id",
+        "size": 0,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "resource_list"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\r\n| extend\r\n    changeTime = todatetime(properties.changeAttributes.timestamp), \r\n    changeType = tostring(properties.changeType),\r\n    changedBy = tostring(properties.changeAttributes.changedBy),\r\n    CreatedResource = tostring(properties.targetResourceId),\r\n    ResourceType = tostring(properties.targetResourceType)\r\n| where changeType == \"Create\"\r\n| where countof(ResourceType, '/') == 1\r\n| where array_length(dynamic([{Resource_Type}])) == 0 or ResourceType in (dynamic([{Resource_Type}]))\r\n| where array_length(dynamic([{Location}])) == 0 or location in (dynamic([{Location}]))\r\n| project CreatedTime= changeTime,CreatedResource,CreatedBy=changedBy\r\n| summarize arg_min(CreatedTime, *) by CreatedResource\r\n",
+        "size": 0,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "resource_create_time"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\",\"mergeType\":\"leftouter\",\"leftTable\":\"resource_list\",\"rightTable\":\"resource_create_time\",\"leftColumn\":\"id\",\"rightColumn\":\"CreatedResource\"}],\"projectRename\":[{\"originalName\":\"[resource_list].id\",\"mergedName\":\"id\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_list].type\",\"mergedName\":\"type\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_list].location\",\"mergedName\":\"location\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_list].resourceGroup\",\"mergedName\":\"resourceGroup\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_create_time].CreatedTime\",\"mergedName\":\"CreatedTime\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_create_time].CreatedBy\",\"mergedName\":\"CreatedBy\",\"fromId\":\"c9170c71-c84c-4f15-8171-c0fb3e996039\"},{\"originalName\":\"[resource_list].name\"},{\"originalName\":\"[resource_list].timeCreated\"},{\"originalName\":\"[resource_create_time].ResourceType\"},{\"originalName\":\"[resource_create_time].CreatedResource\"}]}",
+        "size": 3,
+        "queryType": 7
+      },
+      "name": "query - 3"
+    }
+  ],
+  "fallbackResourceIds": [
+    "azure monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

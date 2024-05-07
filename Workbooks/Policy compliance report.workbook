@@ -1,0 +1,290 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "40501a96-c2df-4b0b-b014-8fb49bf4495d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscriptions",
+            "type": 6,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "includeAll": true,
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - subscription"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\r\n| extend policyAssignmentId = tolower(tostring(properties.policyAssignmentId)),\r\n  complianceState = tostring(properties.complianceState)\r\n| where type =~ \"microsoft.policyinsights/policystates\"\r\n| where complianceState =~ \"NonCompliant\"\r\n| distinct policyAssignmentId",
+        "size": 4,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "Policy Assignment Id Query"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\r\n| where type =~ \"microsoft.authorization/policyassignments\"\r\n| project displayName = tostring(properties.displayName), policyAssignmentId = tolower(tostring(id))\r\n| sort by displayName asc",
+        "size": 0,
+        "queryType": 1,
+        "resourceType": "microsoft.resources/tenants",
+        "crossComponentResources": [
+          "value::tenant"
+        ]
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "Policy Display Name Query"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a253dced-fe2f-4175-b974-f90f4deadc9a",
+            "version": "KqlParameterItem/1.0",
+            "name": "displayName",
+            "label": "Policy Assignment Name",
+            "type": 2,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"5264acf3-cd3b-4dd5-9fe3-25d6f2ad7034\",\"mergeType\":\"innerunique\",\"leftTable\":\"Policy Assignment Id Query\",\"rightTable\":\"Policy Display Name Query\",\"leftColumn\":\"policyAssignmentId\",\"rightColumn\":\"policyAssignmentId\"}],\"projectRename\":[{\"originalName\":\"[Policy Assignment Id Query].policyAssignmentId\",\"mergedName\":\"policyAssignmentId\",\"fromId\":\"5264acf3-cd3b-4dd5-9fe3-25d6f2ad7034\"},{\"originalName\":\"[Policy Display Name Query].displayName\",\"mergedName\":\"displayName\",\"fromId\":\"5264acf3-cd3b-4dd5-9fe3-25d6f2ad7034\"},{\"originalName\":\"[parameter query 2].policyAssignmentId\"},{\"originalName\":\"[parameter query 1].policyAssignmentId\"},{\"originalName\":\"[Policy Display Name Query].policyAssignmentId\"}]}",
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "defaultValue": "value::all",
+            "queryType": 7,
+            "value": [
+              "value::all"
+            ]
+          }
+        ],
+        "style": "pills",
+        "queryType": 7
+      },
+      "name": "parameters - policy assignment name"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\r\n| extend policyAssignmentId = tostring(properties.policyAssignmentId)\r\n| where type == \"microsoft.policyinsights/policystates\"\r\n| where policyAssignmentId in ({displayName})\r\n| summarize count() by tostring(properties.complianceState)",
+        "size": 4,
+        "title": "Policy Compliance Summary",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "visualization": "piechart",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "count_",
+              "formatter": 3,
+              "formatOptions": {
+                "palette": "blue"
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "properties_complianceState",
+              "label": "Compliance State"
+            },
+            {
+              "columnId": "count_",
+              "label": "Total"
+            }
+          ]
+        },
+        "graphSettings": {
+          "type": 0,
+          "topContent": {
+            "columnMatch": "properties_complianceState",
+            "formatter": 1
+          },
+          "centerContent": {
+            "columnMatch": "count_",
+            "formatter": 1,
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "name": "Compliance Count Summary"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\r\n| extend policyAssignmentId = tostring(properties.policyAssignmentId),\r\n  policyAssignmentScope = tostring(properties.policyAssignmentScope),\r\n  complianceState = tostring(properties.complianceState),\r\n  resourceType = tostring(properties.resourceType),\r\n  resourceId = tostring(properties.resourceId),\r\n  timestamp = properties.timestamp\r\n| where type =~ \"microsoft.policyinsights/policystates\"\r\n| where complianceState =~ \"NonCompliant\"\r\n| where policyAssignmentId in ({displayName})\r\n| project timestamp, resourceId, resourceType, complianceState=\"failed\", policyAssignmentId, policyAssignmentScope",
+        "size": 0,
+        "title": "Noncompliant Resource List",
+        "showRefreshButton": true,
+        "showExportToExcel": true,
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscriptions}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "timestamp",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "resourceType",
+              "formatter": 16,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "complianceState",
+              "formatter": 11
+            },
+            {
+              "columnMatch": "policyAssignmentId",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": null,
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "policyAssignmentScope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": null,
+                "showIcon": true
+              }
+            }
+          ],
+          "rowLimit": 10000,
+          "labelSettings": [
+            {
+              "columnId": "timestamp",
+              "label": "Date & Time"
+            },
+            {
+              "columnId": "resourceId",
+              "label": "Resource"
+            },
+            {
+              "columnId": "resourceType",
+              "label": "Resource Type"
+            },
+            {
+              "columnId": "complianceState",
+              "label": "Complaince State"
+            },
+            {
+              "columnId": "policyAssignmentId",
+              "label": "Policy Assignment ID"
+            },
+            {
+              "columnId": "policyAssignmentScope",
+              "label": "Policy Assignment Scope"
+            }
+          ]
+        }
+      },
+      "conditionalVisibility": {
+        "parameterName": "1",
+        "comparison": "isEqualTo",
+        "value": "1"
+      },
+      "name": "Noncompliant Resources Query"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\":\"Merge/1.0\",\"merges\":[{\"id\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\",\"mergeType\":\"leftouter\",\"leftTable\":\"Noncompliant Resources Query\",\"rightTable\":\"Policy Display Name Query\",\"leftColumn\":\"policyAssignmentId\",\"rightColumn\":\"policyAssignmentId\"}],\"projectRename\":[{\"originalName\":\"[Noncompliant Resources Query].timestamp\",\"mergedName\":\"Date & Time\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Noncompliant Resources Query].resourceId\",\"mergedName\":\"Resource\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Noncompliant Resources Query].resourceType\",\"mergedName\":\"Resource Type\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Policy Display Name Query].displayName\",\"mergedName\":\"Policy Assignment Name\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Noncompliant Resources Query].complianceState\",\"mergedName\":\"Complaince State\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Noncompliant Resources Query].policyAssignmentId\",\"mergedName\":\"Policy Assignment ID\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Noncompliant Resources Query].policyAssignmentScope\",\"mergedName\":\"Policy Assignment Scope\",\"fromId\":\"af7fec10-2fc8-49e4-adb9-7ea471b8f025\"},{\"originalName\":\"[Policy Display Name Query].policyAssignmentId\"}]}",
+        "size": 3,
+        "title": "Noncompliant Resource List",
+        "showRefreshButton": true,
+        "showExportToExcel": true,
+        "queryType": 7,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Date & Time",
+              "formatter": 6
+            },
+            {
+              "columnMatch": "Resource Type",
+              "formatter": 16,
+              "formatOptions": {
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Complaince State",
+              "formatter": 11
+            }
+          ],
+          "rowLimit": 10000
+        }
+      },
+      "name": "Noncompliant Resource List"
+    }
+  ],
+  "fallbackResourceIds": [
+    "azure monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

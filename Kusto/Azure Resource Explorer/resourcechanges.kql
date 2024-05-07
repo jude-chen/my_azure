@@ -1,0 +1,73 @@
+// NSG port changes
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    resourceId = tostring(properties.targetResourceId),
+    resourceType = tostring(properties.targetResourceType)
+| where resourceType =~ "microsoft.network/networksecuritygroups"
+| extend properties_changes_keys = bag_keys(properties.changes)
+| mv-expand properties_changes_keys
+| where properties_changes_keys contains "destinationPortRange"
+| extend ports = properties.changes[tostring(properties_changes_keys)].newValue
+| extend portRange = range(toint(split(ports, "-")[0]), toint(split(ports, "-")[1]))
+| where ports contains "8081" or set_has_element(portRange, 8081)
+| project
+    changeTime,
+    changeType,
+    changedBy,
+    resourceId,
+    resourceType,
+    changeDetails=properties.changes
+
+// VMs created without certain tags
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    resourceId = tostring(properties.targetResourceId),
+    resourceType = tostring(properties.targetResourceType)
+| where changeType =~ "Create"
+| where changeTime > ago(6h) and changeTime <= now()
+| where resourceType =~ "microsoft.compute/virtualmachines" or resourceType =~ "microsoft.network/publicipaddresses"
+| project createdTime= changeTime, resourceId, resourceType, createdBy=changedBy
+| join (
+    resources
+    | where type =~ "microsoft.compute/virtualmachines" or type =~ "microsoft.network/publicipaddresses"
+    | project resourceId=id, tags
+    )
+    on resourceId
+| where isnull(tags.Owner) and isnull(tags.owner)
+| project createdTime, resourceId, resourceType, createdBy, tags
+
+// VM creation query
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    targetResourceType = tostring(properties.targetResourceType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    CreatedResource = tostring(properties.targetResourceId),
+    ResourceType = tostring(properties.targetResourceType)
+| where changeType == "Create"
+| where changeTime > ago(10m) and changeTime <= now()
+| where ResourceType == "microsoft.compute/virtualmachines"
+| project CreatedTime= changeTime, CreatedResource, ResourceType, CreatedBy=changedBy
+| order by ['CreatedResource'] asc
+
+// Change actor
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    targetResourceId = tostring(properties.targetResourceId),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    changedByType = properties.changeAttributes.changedByType,
+    clientType = tostring(properties.changeAttributes.clientType)
+| where changeTime > ago(7d)
+| where changedByType in ("Application", "User")
+| project changeTime, changeType, changedBy, changedByType, clientType, properties
+| order by ['changeTime'] asc
+

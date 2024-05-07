@@ -1,0 +1,22 @@
+// NSG port changes 1
+AzureActivity
+| where OperationNameValue =~ "MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE"
+| where ActivityStatusValue == "Accept"
+| extend changeProperties = extract_json("$.responseBody", Properties, typeof(dynamic)).properties
+| where changeProperties.access =~ "Allow"
+| mv-expand portRangeSplit=changeProperties.destinationPortRanges
+| extend portRange = range(toint(split(portRangeSplit, "-")[0]), toint(split(portRangeSplit, "-")[1]))
+| where portRangeSplit contains "8081" or set_has_element(portRange, 8081)
+| project TimeGenerated, Caller, _ResourceId, changeDetails=tostring(changeProperties)
+
+//NSG port changes 2
+AzureActivity
+| where OperationNameValue =~ "MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE"
+| where ActivityStatusValue == "Accept"
+| extend changeProperties = extract_json("$.responseBody", Properties, typeof(dynamic)).properties
+| where changeProperties.access =~ "Allow"
+| extend portRangeSplit=changeProperties.destinationPortRange
+| extend portRange = range(toint(split(portRangeSplit, "-")[0]), toint(split(portRangeSplit, "-")[1]))
+| where portRangeSplit contains "8081" or set_has_element(portRange, 8081)
+| project TimeGenerated, Caller, _ResourceId, changeDetails=tostring(changeProperties)
+

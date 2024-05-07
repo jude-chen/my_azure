@@ -1,0 +1,12 @@
+// Policy compliance state
+policyresources
+| extend
+    policyAssignmentId = properties.policyAssignmentId,
+    complianceState = properties.complianceState,
+    resourceType = properties.resourceType,
+    resourceId = properties.resourceId,
+    timestamp = properties.timestamp
+| where type == "microsoft.policyinsights/policystates"
+| where complianceState == "NonCompliant"
+| project timestamp, resourceId, resourceType, complianceState, policyAssignmentId
+

@@ -1,0 +1,15 @@
+// VM creation without certain tags
+AzureActivity
+| where OperationNameValue =~ "microsoft.compute/virtualmachines/write" or OperationNameValue =~ "microsoft.network/publicipaddresses/write"
+| where ActivitySubstatusValue =~ "Created"
+//| where TimeGenerated > ago(30m) and TimeGenerated <= now()
+| project TimeGenerated, _ResourceId=tolower(_ResourceId), Caller
+| join hint.remote=left  (
+    arg("").resources
+    | where type =~ "microsoft.compute/virtualmachines" or type =~ "microsoft.network/publicipaddresses"
+    | where isnull(tags.Owner) and isnull(tags.owner)
+    | project _ResourceId=tolower(id), ResourceType=type, tags
+    )
+    on _ResourceId
+| project TimeGenerated, _ResourceId, ResourceType, Caller, tostring(tags)
+

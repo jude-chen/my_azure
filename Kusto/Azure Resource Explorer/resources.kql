@@ -1,0 +1,13 @@
+// top level resouces
+resources
+| extend timeCreated = tostring(parse_json(properties).timeCreated)
+| where countof(type, '/') == 1
+| project name, type, resourceGroup, location, timeCreated
+| order by name asc
+
+// resources with time created
+resources
+| extend timeCreated = tostring(parse_json(properties).timeCreated)
+| project name, type, resourceGroup, location, timeCreated
+| order by name asc
+

@@ -8,15 +8,15 @@ resource "azurerm_user_assigned_identity" "mi" {
 ## https://docs.microsoft.com/azure/storage/common/storage-account-overview
 ## Create a File Storage Account 
 resource "azurerm_storage_account" "azfile" {
-  account_replication_type  = "ZRS"
-  account_tier              = "Premium"
-  location                  = azurerm_resource_group.rg.location
-  name                      = local.storage_name
-  resource_group_name       = azurerm_resource_group.rg.name
-  account_kind              = "FileStorage"
-  enable_https_traffic_only = true
-  min_tls_version           = "TLS1_2"
-  tags                      = local.tags
+  account_replication_type   = "ZRS"
+  account_tier               = "Premium"
+  location                   = azurerm_resource_group.rg.location
+  name                       = local.storage_name
+  resource_group_name        = azurerm_resource_group.rg.name
+  account_kind               = "FileStorage"
+  https_traffic_only_enabled = true
+  min_tls_version            = "TLS1_2"
+  tags                       = local.tags
 
   identity {
     type         = "UserAssigned"
@@ -106,10 +106,10 @@ resource "azurerm_private_endpoint" "afpe" {
 
 # Deny Traffic from Public Networks with white list exceptions
 resource "azurerm_storage_account_network_rules" "stfw" {
-  default_action     = "Deny"
+  default_action     = "Allow"
   storage_account_id = azurerm_storage_account.azfile.id
-  bypass             = ["AzureServices", "Metrics", "Logging"]
-  ip_rules           = local.allow_list_ip
+  #bypass             = ["AzureServices", "Metrics", "Logging"]
+  #ip_rules           = local.allow_list_ip
 
   depends_on = [azurerm_private_endpoint.afpe,
   azurerm_role_assignment.af_role, azurerm_storage_share.FSShare]

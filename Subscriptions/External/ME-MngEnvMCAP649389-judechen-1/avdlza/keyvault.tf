@@ -28,8 +28,7 @@ module "avm-res-keyvault-vault" {
 
   network_acls = {
     bypass         = "AzureServices"
-    default_action = "Deny"
-    ip_rules       = ["136.28.83.128"]
+    default_action = "Allow"
     virtual_network_subnet_ids = [
       data.azurerm_subnet.pesubnet.id
     ]

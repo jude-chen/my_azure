@@ -10,21 +10,21 @@ resource "azurerm_virtual_network" "vnet" {
 }
 
 resource "azurerm_subnet" "subnet" {
-  name                                      = "${var.snet}-${substr(var.avdLocation, 0, 5)}-${var.prefix}-001"
-  resource_group_name                       = "rg-avd-${substr(var.avdLocation, 0, 5)}-${var.prefix}-${var.rg_network}"
-  virtual_network_name                      = azurerm_virtual_network.vnet.name
-  address_prefixes                          = var.subnet_range
-  depends_on                                = [azurerm_resource_group.net]
+  name                 = "${var.snet}-${substr(var.avdLocation, 0, 5)}-${var.prefix}-001"
+  resource_group_name  = "rg-avd-${substr(var.avdLocation, 0, 5)}-${var.prefix}-${var.rg_network}"
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = var.subnet_range
+  depends_on           = [azurerm_resource_group.net]
 }
 
 resource "azurerm_subnet" "pesubnet" {
-  name                                      = "${var.pesnet}-${substr(var.avdLocation, 0, 5)}-${var.prefix}-001"
-  resource_group_name                       = "rg-avd-${substr(var.avdLocation, 0, 5)}-${var.prefix}-${var.rg_network}"
-  virtual_network_name                      = azurerm_virtual_network.vnet.name
-  address_prefixes                          = var.pesubnet_range
+  name                              = "${var.pesnet}-${substr(var.avdLocation, 0, 5)}-${var.prefix}-001"
+  resource_group_name               = "rg-avd-${substr(var.avdLocation, 0, 5)}-${var.prefix}-${var.rg_network}"
+  virtual_network_name              = azurerm_virtual_network.vnet.name
+  address_prefixes                  = var.pesubnet_range
   private_endpoint_network_policies = "Enabled"
-  service_endpoints = ["Microsoft.Storage", "Microsoft.KeyVault"]
-  depends_on                                = [azurerm_resource_group.net]
+  service_endpoints                 = ["Microsoft.Storage", "Microsoft.KeyVault"]
+  depends_on                        = [azurerm_resource_group.net]
 }
 
 resource "azurerm_subnet_network_security_group_association" "nsg_assoc" {
@@ -51,6 +51,7 @@ resource "azurerm_virtual_network_peering" "peer1" {
 
 }
 
+/*
 resource "azurerm_virtual_network_peering" "peer4" {
   name                         = "peer_${var.prefix}_avdspoke_identity"
   resource_group_name          = azurerm_resource_group.net.name
@@ -66,6 +67,8 @@ resource "azurerm_virtual_network_peering" "peer4" {
     azurerm_virtual_network_peering.peer1
   ]
 }
+*/
+
 resource "azurerm_virtual_network_peering" "peer2" {
   name                         = "peer_${var.prefix}_hub_avdspoke"
   resource_group_name          = var.hub_connectivity_rg
@@ -82,6 +85,7 @@ resource "azurerm_virtual_network_peering" "peer2" {
   ]
 }
 
+/*
 resource "azurerm_virtual_network_peering" "peer3" {
   name                         = "peer_${var.prefix}_identity_avdspoke"
   resource_group_name          = var.identity_rg
@@ -97,6 +101,7 @@ resource "azurerm_virtual_network_peering" "peer3" {
     azurerm_virtual_network_peering.peer2
   ]
 }
+*/
 
 # optional - Creates the Azure Virtual Desktop Firewall Rules assuming you have a firewall in the hub
 /*

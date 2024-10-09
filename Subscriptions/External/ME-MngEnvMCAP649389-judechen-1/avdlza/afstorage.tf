@@ -108,8 +108,8 @@ resource "azurerm_private_endpoint" "afpe" {
 resource "azurerm_storage_account_network_rules" "stfw" {
   default_action     = "Allow"
   storage_account_id = azurerm_storage_account.azfile.id
-  bypass             = ["AzureServices", "Metrics", "Logging"]
-  ip_rules           = local.allow_list_ip
+  #bypass             = ["AzureServices", "Metrics", "Logging"]
+  #ip_rules           = local.allow_list_ip
 
   depends_on = [azurerm_private_endpoint.afpe,
   azurerm_role_assignment.af_role, azurerm_storage_share.FSShare]

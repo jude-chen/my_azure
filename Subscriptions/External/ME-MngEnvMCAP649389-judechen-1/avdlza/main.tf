@@ -39,7 +39,7 @@ module "avm_res_desktopvirtualization_hostpool" {
   version = "0.1.4"
 
   virtual_desktop_host_pool_location                 = azurerm_resource_group.this.location
-  virtual_desktop_host_pool_name                     = "${var.hostpool}-${var.prefix}-${var.environment}-${var.avdLocation}"
+  virtual_desktop_host_pool_name                     = "${var.hostpool}-${var.prefix}-${var.environment}-${var.avdLocationShort}"
   virtual_desktop_host_pool_type                     = "Pooled" // "Personal" or "Pooled"
   virtual_desktop_host_pool_resource_group_name      = azurerm_resource_group.this.name
   virtual_desktop_host_pool_load_balancer_type       = "BreadthFirst" // "DepthFirst" or "BreadthFirst"
@@ -85,7 +85,7 @@ module "avm_res_desktopvirtualization_applicationgroup" {
   source                                                = "Azure/avm-res-desktopvirtualization-applicationgroup/azurerm"
   enable_telemetry                                      = var.enable_telemetry
   version                                               = "0.1.2"
-  virtual_desktop_application_group_name                = "${var.dag}-${var.prefix}-${var.environment}-${var.avdLocation}-01"
+  virtual_desktop_application_group_name                = "${var.dag}-${var.prefix}-${var.environment}-${var.avdLocationShort}-01"
   virtual_desktop_application_group_type                = "Desktop"
   virtual_desktop_application_group_host_pool_id        = module.avm_res_desktopvirtualization_hostpool.resource.id
   virtual_desktop_application_group_resource_group_name = azurerm_resource_group.this.name
@@ -102,7 +102,7 @@ module "avm_res_desktopvirtualization_workspace" {
   resource_group_name = azurerm_resource_group.this.name
   location            = azurerm_resource_group.this.location
   description         = "${var.prefix} Workspace"
-  name                = "${var.workspace}-${var.prefix}-${var.environment}-${var.avdLocation}-01"
+  name                = "${var.workspace}-${var.prefix}-${var.environment}-${var.avdLocationShort}-01"
   tags                = local.tags
 }
 

@@ -8,6 +8,10 @@ variable "avdLocation" {
   description = "Location of the resource group."
 }
 
+variable "avdLocationShort" {
+  description = "Location of the resource group in short name."
+}
+
 variable "avdshared_subscription_id" {
   type        = string
   description = "Spoke Subscription id"

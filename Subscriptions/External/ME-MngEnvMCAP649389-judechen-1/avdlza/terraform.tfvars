@@ -1,5 +1,6 @@
 ##############  Modify the following variables to match your environment by replacing the values in quotes #####################
 avdLocation               = "northeurope"                              # change to your Azure region
+avdLocationShort          = "neu"                                      # change to your Azure region short name
 prefix                    = "cb01"                                     # change to your prefix 4 characters (letters and numbers only)
 environment               = "prod"                                     # change to your environment (development, test, production)
 local_admin_username      = "azureadmin"                               # Your AVD VM local Windows administrator login username (administrator is not allowed)

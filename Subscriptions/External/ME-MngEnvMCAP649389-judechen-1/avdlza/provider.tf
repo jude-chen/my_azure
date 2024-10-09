@@ -1,4 +1,11 @@
 terraform {
+  cloud {
+    organization = "jude-demos"
+
+    workspaces {
+      name = "avdlza"
+    }
+  }
   required_providers {
     azurerm = {
       source = "hashicorp/azurerm"
@@ -38,6 +45,7 @@ provider "azurerm" {
     }
   }
   skip_provider_registration = true
+  subscription_id            = var.spoke_subscription_id
 }
 
 provider "azurerm" {

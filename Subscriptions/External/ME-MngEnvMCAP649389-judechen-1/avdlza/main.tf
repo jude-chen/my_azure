@@ -7,9 +7,9 @@ module "network" {
   snet                     = var.snet
   pesnet                   = var.pesnet
   vnet_range               = var.vnet_range
-  nsg                      = "${var.nsg}-${var.prefix}-${var.environment}-${var.avdLocation}"
+  nsg                      = "${var.nsg}-${var.prefix}-${var.environment}-${var.avdLocationShort}"
   prefix                   = var.prefix
-  rt                       = "${var.rt}-${var.prefix}-${var.environment}-${var.avdLocation}"
+  rt                       = "${var.rt}-${var.prefix}-${var.environment}-${var.avdLocationShort}"
   hub_connectivity_rg      = var.hub_connectivity_rg
   hub_vnet                 = var.hub_vnet
   subnet_range             = var.subnet_range
@@ -30,7 +30,7 @@ module "avm_res_operationalinsights_workspace" {
   enable_telemetry    = var.enable_telemetry
   resource_group_name = azurerm_resource_group.mon.name
   location            = var.avdLocation
-  name                = lower(replace("log-avd-${var.environment}-${var.avdLocation}", "-", ""))
+  name                = lower(replace("log-avd-${var.environment}-${var.avdLocationShort}", "-", ""))
   tags                = local.tags
 }
 
@@ -152,7 +152,7 @@ module "avm_res_desktopvirtualization_scaling_plan" {
   source                                           = "Azure/avm-res-desktopvirtualization-scalingplan/azurerm"
   enable_telemetry                                 = var.enable_telemetry
   version                                          = "0.1.2"
-  virtual_desktop_scaling_plan_name                = "${var.scplan}-${var.prefix}-${var.environment}-${var.avdLocation}-01"
+  virtual_desktop_scaling_plan_name                = "${var.scplan}-${var.prefix}-${var.environment}-${var.avdLocationShort}-01"
   virtual_desktop_scaling_plan_location            = azurerm_resource_group.this.location
   virtual_desktop_scaling_plan_resource_group_name = azurerm_resource_group.this.name
   virtual_desktop_scaling_plan_time_zone           = "Eastern Standard Time"

@@ -18,6 +18,10 @@ resource "azurerm_storage_account" "azfile" {
   min_tls_version            = "TLS1_2"
   tags                       = local.tags
 
+  lifecycle {
+    ignore_changes = [azure_files_authentication]
+  }
+
   identity {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.mi.id]

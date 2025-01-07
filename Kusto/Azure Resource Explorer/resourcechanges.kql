@@ -71,3 +71,17 @@ resourcechanges
 | project changeTime, changeType, changedBy, changedByType, clientType, properties
 | order by ['changeTime'] asc
 
+// Attach/detach disks
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    resourceId = tostring(properties.targetResourceId),
+    resourceType = tostring(properties.targetResourceType),
+    diskState = properties.changes["properties.diskState"]
+| where changeType =~ "Update" and resourceType =~ "microsoft.compute/disks"
+//| where (diskState.previousValue =~ "Unattached" and diskState.newValue =~ "Attached") or (diskState.previousValue =~ "Attached" and diskState.newValue =~ "Unattached")
+| where isnotnull(diskState)
+| project changeTime, resourceId, diskState, changedBy
+

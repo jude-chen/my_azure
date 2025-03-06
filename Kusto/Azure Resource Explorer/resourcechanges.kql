@@ -85,3 +85,55 @@ resourcechanges
 | where isnotnull(diskState)
 | project changeTime, resourceId, diskState, changedBy
 
+arg("").resourcechanges
+| extend
+    ChangeTime = todatetime(properties.changeAttributes.timestamp),
+    ChangeType = tostring(properties.changeType),
+    ChangedBy = tostring(properties.changeAttributes.changedBy),
+    ResourceId = tostring(properties.targetResourceId),
+    ResourceType = tostring(properties.targetResourceType),
+    DiskState = properties.changes["properties.diskState"]
+| where ChangeTime > ago(10m) and ChangeTime <= now()
+| where ChangeType =~ "Update" and ResourceType =~ "microsoft.compute/disks"
+| where (DiskState.previousValue =~ "Unattached" and DiskState.newValue =~ "Reserved") or (DiskState.previousValue =~ "Reserved" and DiskState.newValue =~ "Unattached")
+| where ChangedBy contains "@inspirebrands.com" or ChangedBy == "System"
+| project ChangeTime, ResourceId, DiskState, ChangedBy
+
+
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    resourceId = tostring(properties.targetResourceId),
+    resourceType = tostring(properties.targetResourceType),
+    diskState = properties.changes["properties.diskState"]
+| where resourceType =~ "microsoft.compute/disks"
+| where resourceId contains ""
+| project changeTime, resourceId, diskState, changedBy, properties
+
+
+resourcechanges
+| extend
+    changeTime = todatetime(properties.changeAttributes.timestamp),
+    changeType = tostring(properties.changeType),
+    changedBy = tostring(properties.changeAttributes.changedBy),
+    resourceId = tostring(properties.targetResourceId),
+    resourceType = tostring(properties.targetResourceType)
+| where resourceType =~ "microsoft.compute/virtualmachines"
+| where changeType == "Update"
+| where properties.changes contains "dataDisks"
+| project changeTime, resourceId, changedBy, properties
+
+
+arg("").resourcechanges
+| extend
+    ChangeTime = todatetime(properties.changeAttributes.timestamp),
+    ChangeType = tostring(properties.changeType),
+    ChangedBy = tostring(properties.changeAttributes.changedBy),
+    ResourceId = tostring(properties.targetResourceId),
+    ResourceType = tostring(properties.targetResourceType)
+| where ChangeTime > ago(10m) and ChangeTime <= now()
+| where ChangeType =~ "Update" and ResourceType =~ "microsoft.compute/virtualmachines"
+| where properties.changes contains "dataDisks"
+| project ChangeTime, ResourceId, ChangedBy

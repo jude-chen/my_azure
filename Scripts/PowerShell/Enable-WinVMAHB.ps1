@@ -46,7 +46,7 @@ foreach ($sub in $subscriptions) {
     Set-AzContext -SubscriptionId $sub.Id
 
     # Get all Windows Server VMs in this subscription
-    $vms = Get-AzVM | Where-Object { $_.StorageProfile.OSDisk.OsType -eq "Windows" -and $_.LicenseType -eq $null }
+    $vms = Get-AzVM | Where-Object { $_.StorageProfile.OSDisk.OsType -eq "Windows" -and ($_.LicenseType -eq $null -or $_.LicenseType -eq "None") }
 
     foreach ($vm in $vms) {
         $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")

@@ -52,7 +52,7 @@ foreach ($sub in $subscriptions) {
         Write-Host "VMSS: $($vmss.Name) in RG: $($vmss.ResourceGroupName)" -ForegroundColor Green
 
         # Check if OS type is Windows and AHB is not enabled
-        if ($vmss.VirtualMachineProfile.StorageProfile.OsDisk.OsType -eq "Windows" -and $null -eq $vmss.VirtualMachineProfile.LicenseType) {
+        if ($vmss.VirtualMachineProfile.StorageProfile.OsDisk.OsType -eq "Windows" -and ($null -eq $vmss.VirtualMachineProfile.LicenseType -or $vmss.VirtualMachineProfile.LicenseType -eq "None")) {
             if ($dryRun) {
                 Write-Host "[Dry-Run] Would enable Azure Hybrid Benefit for VMSS: $($vmss.Name)" -ForegroundColor Yellow
                 "$timestamp,$($sub.Name),$($sub.Id),$($vmss.ResourceGroupName),$($vmss.Name),Dry-Run" | Out-File -FilePath $logFile -Append

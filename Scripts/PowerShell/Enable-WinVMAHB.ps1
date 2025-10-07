@@ -16,7 +16,7 @@ else {
 }
 
 # CSV log file path
-$logFile = "AzureHybridBenefitLog.csv"
+$logFile = "AzureHybridBenefit_VM_Log.csv"
 
 # Initialize log file with headers
 "Timestamp,SubscriptionName,SubscriptionId,ResourceGroup,VMName,Status" | Out-File -FilePath $logFile

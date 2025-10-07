@@ -1,21 +1,21 @@
 # We strongly recommend using the required_providers block to set the
 # Azure Provider source and version being used
 terraform {
-  cloud {
-    organization = "jude-demos"
+  # cloud {
+  #   organization = "jude-demos"
 
-    workspaces {
-      name = "ib-redis-test"
-    }
-  }
+  #   workspaces {
+  #     name = "ib-redis-test"
+  #   }
+  # }
 
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.110"
+      version = "~> 3.117"
     }
   }
-  required_version = "~> 1.9.0"
+  required_version = "~> 1.12.0"
 }
 
 # Configure the Microsoft Azure Provider

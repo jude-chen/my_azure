@@ -1,4 +1,5 @@
 locals {
-  primary_region   = "northeurope"
-  secondary_region = "westeurope"
+  primary_region   = "eastus"
+  secondary_region = "westus"
+  prefix           = "redistest0516"
 }

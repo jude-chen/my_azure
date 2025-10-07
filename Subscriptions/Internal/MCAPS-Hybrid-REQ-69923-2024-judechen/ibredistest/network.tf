@@ -3,7 +3,7 @@ module "ibredistest-vnet-primary" {
   version             = "0.4.0"
   address_space       = ["10.0.0.0/16"]
   location            = local.primary_region
-  name                = "ibredistest-vnet-primary"
+  name                = "${local.prefix}-vnet-primary"
   resource_group_name = azurerm_resource_group.ibredistest-rg.name
   subnets = {
     "subnet1" = {
@@ -22,7 +22,7 @@ module "ibredistest-vnet-secondary" {
   version             = "0.4.0"
   address_space       = ["10.1.0.0/16"]
   location            = local.secondary_region
-  name                = "ibredistest-vnet-secondary"
+  name                = "${local.prefix}-vnet-secondary"
   resource_group_name = azurerm_resource_group.ibredistest-rg.name
   subnets = {
     "subnet1" = {
@@ -43,11 +43,11 @@ module "redis-private-dns-zone" {
   resource_group_name = azurerm_resource_group.ibredistest-rg.name
   virtual_network_links = {
     "primary" = {
-      vnetlinkname = "ibredistest-vnet-primary"
+      vnetlinkname = "${local.prefix}-vnet-primary"
       vnetid       = module.ibredistest-vnet-primary.resource_id
     }
     "secondary" = {
-      vnetlinkname = "ibredistest-vnet-secondary"
+      vnetlinkname = "${local.prefix}-vnet-secondary"
       vnetid       = module.ibredistest-vnet-secondary.resource_id
     }
   }

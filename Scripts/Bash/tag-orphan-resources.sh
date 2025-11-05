@@ -88,11 +88,11 @@ find_idle_private_dns_zones () {
   # Zones with only default records and no VNet links
   # numberOfRecordSets includes SOA + NS (usually 2); use <=2 as "default-only"
   local zones
+  local link_count
   zones=$(az network private-dns zone list --query "[?numberOfRecordSets<=\`2\`].[name,resourceGroup,id]" -o tsv)
   while IFS=$'\t' read -r zname zrg zid; do
     [[ -z "${zid}" ]] && continue
     # Check for VNet links
-    local link_count
     link_count=$(az network private-dns link vnet list -g "${zrg}" -z "${zname}" --query "length(@)" -o tsv || echo "0")
     if [[ "${link_count}" == "0" ]]; then
       echo "${zid}"
@@ -104,6 +104,7 @@ find_idle_private_endpoints () {
   # Idle if no approved private link service connections
   # (Either zero connections, or all connections not 'Approved')
   local eps
+  local approved
   eps=$(az network private-endpoint list -o tsv --query "[].[id,name,privateLinkServiceConnections]")
   while IFS=$'\t' read -r id name conns; do
     [[ -z "${id}" ]] && continue
@@ -113,9 +114,8 @@ find_idle_private_endpoints () {
       continue
     fi
     # Otherwise, check if there is any Approved connection
-    local approved
     approved=$(az network private-endpoint show --ids "${id}" \
-      --query "any(privateLinkServiceConnections[].privateLinkServiceConnectionState.status, &=='Approved')" -o tsv 2>/dev/null || echo "false")
+      --query "contains(privateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>/dev/null || echo "false")
     if [[ "${approved}" != "true" ]]; then
       echo "${id}"
     fi
@@ -126,17 +126,17 @@ find_orphan_backups () {
   # Protected items whose source resource no longer exists
   # Iterate all Recovery Services vaults and test each item’s sourceResourceId
   local vaults v
+  local items
+  local src
   vaults=$(az backup vault list --query "[].{name:name,rg:resourceGroup}" -o tsv || true)
   while IFS=$'\t' read -r vname vrg; do
     [[ -z "${vname}" ]] && continue
     # List items; include deleted if you want to surface soft-deleted as well
-    local items
     items=$(az backup item list --vault-name "${vname}" -g "${vrg}" --query "[].id" -o tsv || true)
     while IFS= read -r item_id; do
       [[ -z "${item_id}" ]] && continue
       # Fetch sourceResourceId via REST (CLI 'show' varies by workload)
       # Using generic az resource show to retrieve properties
-      local src
       src=$(az resource show --ids "${item_id}" --query "properties.sourceResourceId" -o tsv 2>/dev/null || echo "")
       if [[ -z "${src}" ]]; then
         # No source recorded -> treat as orphan candidate

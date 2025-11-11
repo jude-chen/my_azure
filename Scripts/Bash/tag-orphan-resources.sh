@@ -58,7 +58,7 @@ exists_resource () {
 
 find_stopped_vms () {
   # VM powerState requires --show-details
-  az vm list -d --query "[?powerState!='VM stopped' && powerState!='VM running'].id" -o tsv
+  az vm list -d --query "[?powerState!='VM deallocated' && powerState!='VM running'].id" -o tsv
 }
 
 find_deallocated_vms () {

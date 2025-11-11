@@ -58,7 +58,7 @@ exists_resource () {
 
 find_stopped_vms () {
   # VM powerState requires --show-details
-  az vm list -d --query "[?powerState=='VM stopped'].id" -o tsv
+  az vm list -d --query "[?powerState!='VM stopped' && powerState!='VM running'].id" -o tsv
 }
 
 find_deallocated_vms () {
@@ -66,22 +66,22 @@ find_deallocated_vms () {
 }
 
 find_unattached_disks () {
-  az disk list --query "[?managedBy==null].id" -o tsv
+  az disk list --query "[?(managedBy == '' || managedBy == null) && contains(to_string(tags), 'kubernetes.io-created-for-pvc') == false && contains(to_string(tags), 'ASR-ReplicaDisk') == false && contains(to_string(tags), 'asrseeddisk') == false && contains(to_string(tags), 'RSVaultBackup') == false && diskState != 'ActiveSAS'].id" -o tsv
 }
 
 find_unattached_public_ips () {
   # public IPs not attached to a NIC or LB
-  az network public-ip list --query "[?ipConfiguration==null].id" -o tsv
+  az network public-ip list --query "[?ipConfiguration==null && natGateway==null && publicIPAllocationMethod == 'Static'].id" -o tsv
 }
 
 find_unattached_nat_gateways () {
   # NAT Gateways with no subnets attached
-  az network nat gateway list --query "[?length(subnets)==\`0\`].id" -o tsv
+  az network nat gateway list --query "[?subnets==null || length(subnets)==\`0\`].id" -o tsv
 }
 
 find_idle_expressroute_circuits () {
   # Heuristic: circuits with no peerings
-  az network express-route list --query "[?length(peerings)==\`0\`].id" -o tsv || true
+  az network express-route list --query "[?peerings==null || length(peerings)==\`0\` || serviceProviderProvisioningState=='NotProvisioned'].id" -o tsv || true
 }
 
 find_idle_private_dns_zones () {

@@ -58,7 +58,7 @@ exists_resource () {
 
 find_stopped_vms () {
   # VM powerState requires --show-details
-  az vm list -d --query "[?powerState!='VM deallocated' && powerState!='VM running'].id" -o tsv
+  az vm list -d --query "[?powerState=='VM stopped' || powerState=='' || powerState==null].id" -o tsv
 }
 
 find_deallocated_vms () {
@@ -66,7 +66,7 @@ find_deallocated_vms () {
 }
 
 find_unattached_disks () {
-  az disk list --query "[?(managedBy == '' || managedBy == null) && contains(to_string(tags), 'kubernetes.io-created-for-pvc') == false && contains(to_string(tags), 'ASR-ReplicaDisk') == false && contains(to_string(tags), 'asrseeddisk') == false && contains(to_string(tags), 'RSVaultBackup') == false && diskState != 'ActiveSAS'].id" -o tsv
+  az disk list --query "[?(managedBy=='' || managedBy==null) && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\` && diskState != 'ActiveSAS'].id" -o tsv
 }
 
 find_unattached_public_ips () {

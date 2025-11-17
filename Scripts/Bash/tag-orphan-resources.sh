@@ -66,12 +66,39 @@ find_deallocated_vms () {
 }
 
 find_unattached_disks () {
-  az disk list --query "[?(managedBy=='' || managedBy==null) && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\` && diskState != 'ActiveSAS'].id" -o tsv
+  # Query disks that are Unattached and exclude system/managed disks
+  az disk list --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv
+}
+
+find_old_snapshots () {
+  # Find managed disk snapshots older than 30 days
+  local cutoff_seconds
+  local snapshots
+
+  # Calculate epoch seconds for 30 days ago
+  cutoff_seconds=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s 2>/dev/null)
+
+  # List all snapshots with their creation time
+  snapshots=$(az snapshot list --query "[].{id:id,created:timeCreated}" -o tsv)
+
+  while IFS=$'\t' read -r snap_id created_time; do
+    [[ -z "${snap_id}" ]] && continue
+    [[ -z "${created_time}" ]] && continue
+
+    # Convert ISO 8601 timestamp to epoch seconds for reliable comparison
+    # Remove any timezone suffix and convert
+    created_seconds=$(date -u -d "${created_time}" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%S" "${created_time%.*}" +%s 2>/dev/null || echo "0")
+    
+    if [[ ${created_seconds} -gt 0 && ${created_seconds} -lt ${cutoff_seconds} ]]; then
+      echo "${snap_id}"
+    fi
+  done <<< "${snapshots}"
 }
 
 find_unattached_public_ips () {
-  # public IPs not attached to a NIC or LB
-  az network public-ip list --query "[?ipConfiguration==null && natGateway==null && publicIPAllocationMethod == 'Static'].id" -o tsv
+  # public IPs not attached to a NIC, LB, or NAT Gateway
+  # Include both Static and Dynamic unattached IPs
+  az network public-ip list --query "[?ipConfiguration==null && natGateway==null].id" -o tsv
 }
 
 find_unattached_nat_gateways () {
@@ -102,21 +129,22 @@ find_idle_private_dns_zones () {
 
 find_idle_private_endpoints () {
   # Idle if no approved private link service connections
-  # (Either zero connections, or all connections not 'Approved')
+  # Check both privateLinkServiceConnections and manualPrivateLinkServiceConnections
   local eps
   local approved
-  eps=$(az network private-endpoint list -o tsv --query "[].[id,name,privateLinkServiceConnections]")
-  while IFS=$'\t' read -r id name conns; do
+  local manual_approved
+  eps=$(az network private-endpoint list --query "[].[id,name]" -o tsv)
+  while IFS=$'\t' read -r id name; do
     [[ -z "${id}" ]] && continue
-    # If conns is '[]' (empty), mark idle
-    if [[ "${conns}" == "[]" ]]; then
-      echo "${id}"
-      continue
-    fi
-    # Otherwise, check if there is any Approved connection
+    
+    # Check both automatic and manual connections for Approved status
     approved=$(az network private-endpoint show --ids "${id}" \
       --query "contains(privateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>/dev/null || echo "false")
-    if [[ "${approved}" != "true" ]]; then
+    manual_approved=$(az network private-endpoint show --ids "${id}" \
+      --query "contains(manualPrivateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>/dev/null || echo "false")
+    
+    # Mark as idle if neither connection type has Approved status
+    if [[ "${approved}" != "true" && "${manual_approved}" != "true" ]]; then
       echo "${id}"
     fi
   done <<< "${eps}"
@@ -161,8 +189,19 @@ find_idle_sql_pools () {
       --query "[?status=='Paused'].id" -o tsv 2>/dev/null || true
   done
 
-  # Azure SQL elastic pools with zero DBs
-  az sql elastic-pool list --query "[?databaseCount==\`0\`].id" -o tsv 2>/dev/null || true
+  # Azure SQL elastic pools - check each pool for database count
+  local pools
+  pools=$(az sql elastic-pool list --query "[].[id,name,resourceGroup,serverName]" -o tsv 2>/dev/null || true)
+  while IFS=$'\t' read -r pool_id pool_name rg server_name; do
+    [[ -z "${pool_id}" ]] && continue
+    # Count databases in this elastic pool
+    local db_count
+    db_count=$(az sql db list -g "${rg}" -s "${server_name}" \
+      --query "length([?elasticPoolName=='${pool_name}'])" -o tsv 2>/dev/null || echo "1")
+    if [[ "${db_count}" == "0" ]]; then
+      echo "${pool_id}"
+    fi
+  done <<< "${pools}"
 }
 
 ########################
@@ -194,25 +233,28 @@ for sub in "${SUBS[@]}"; do
   # 3) Unattached managed disks
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-disk"; done < <(find_unattached_disks)
 
-  # 4) Orphan backups (protected items)
+  # 4) Old snapshots (older than 30 days)
+  while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "old-snapshot"; done < <(find_old_snapshots)
+
+  # 5) Orphan backups (protected items)
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "orphan-backup"; done < <(find_orphan_backups)
 
-  # 5) Unattached Public IPs
+  # 6) Unattached Public IPs
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-publicip"; done < <(find_unattached_public_ips)
 
-  # 6) Unattached NAT Gateways
+  # 7) Unattached NAT Gateways
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-natgw"; done < <(find_unattached_nat_gateways)
 
-  # 7) Idle ExpressRoute circuits (no peerings)
+  # 8) Idle ExpressRoute circuits (no peerings)
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-expressroute"; done < <(find_idle_expressroute_circuits)
 
-  # 8) Idle Private DNS zones (no VNet links & default-only records)
+  # 9) Idle Private DNS zones (no VNet links & default-only records)
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-privatedns-zone"; done < <(find_idle_private_dns_zones)
 
-  # 9) Idle Private Endpoints
+  # 10) Idle Private Endpoints
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-private-endpoint"; done < <(find_idle_private_endpoints)
 
-  # 10) Idle SQL Pools (Synapse paused, SQL elastic pools with 0 DBs)
+  # 11) Idle SQL Pools (Synapse paused, SQL elastic pools with 0 DBs)
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-sql-pool"; done < <(find_idle_sql_pools)
 
 done

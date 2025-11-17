@@ -67,7 +67,14 @@ find_deallocated_vms () {
 
 find_unattached_disks () {
   # Query disks that are Unattached and exclude system/managed disks
-  az disk list --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv
+  # Azure CLI 2.79.0+ requires --resource-group, so iterate through all RGs
+  local rgs
+  rgs=$(az group list --query "[].name" -o tsv)
+  
+  while IFS= read -r rg; do
+    [[ -z "${rg}" ]] && continue
+    az disk list -g "${rg}" --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv 2>/dev/null || true
+  done <<< "${rgs}"
 }
 
 find_old_snapshots () {

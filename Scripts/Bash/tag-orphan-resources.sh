@@ -16,12 +16,16 @@ set -o nounset
 ########################
 # Configuration
 ########################
-# Tag to write (key/value). Adjust to your org’s standard, e.g., "CleanupCandidate" / "true".
+# Tag to write (key/value). Adjust to your org's standard, e.g., "CleanupCandidate" / "true".
 TAG_KEY="${TAG_KEY:-CleanupCandidate}"
 TAG_PREFIX="${TAG_PREFIX:-orphan}"  # value becomes: orphan:<reason>, e.g., orphan:unattached-disk
 APPLY_TAGS="${APPLY_TAGS:-false}"   # set to "true" to actually write tags
 # Optional: limit to a management group scope by uncommenting and setting MG_ID
 # MG_ID="my-mg-id"
+# Optional: exclude specific resource groups (comma-separated list)
+EXCLUDE_RGS="${EXCLUDE_RGS:-}"
+# Optional: error log file path
+ERROR_LOG="${ERROR_LOG:-errors.log}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -52,17 +56,51 @@ exists_resource () {
   az resource show --ids "$rid" --only-show-errors >/dev/null 2>&1
 }
 
+is_rg_excluded () {
+  # Check if a resource group name should be excluded
+  local rg_name="$1"
+  [[ -z "${EXCLUDE_RGS}" ]] && return 1  # No exclusions defined
+
+  # Split comma-separated list and check each pattern
+  IFS=',' read -ra EXCLUDE_LIST <<< "${EXCLUDE_RGS}"
+  for pattern in "${EXCLUDE_LIST[@]}"; do
+    pattern=$(echo "${pattern}" | xargs)  # Trim whitespace
+    [[ -z "${pattern}" ]] && continue
+    # Support wildcards using bash pattern matching
+    if [[ "${rg_name}" == ${pattern} ]]; then
+      return 0  # Excluded
+    fi
+  done
+  return 1  # Not excluded
+}
+
 ########################
 # Discovery Functions
 ########################
 
 find_stopped_vms () {
   # VM powerState requires --show-details
-  az vm list -d --query "[?powerState=='VM stopped' || powerState=='' || powerState==null].id" -o tsv
+  # Iterate through all resource groups to list VMs
+  local rgs
+  rgs=$(az group list --query "[].name" -o tsv)
+
+  while IFS= read -r rg; do
+    [[ -z "${rg}" ]] && continue
+    is_rg_excluded "${rg}" && continue
+    az vm list -d -g "${rg}" --query "[?powerState=='VM stopped' || powerState=='' || powerState==null].id" -o tsv 2>>"${ERROR_LOG}" || true
+  done <<< "${rgs}"
 }
 
 find_deallocated_vms () {
-  az vm list -d --query "[?powerState=='VM deallocated'].id" -o tsv
+  # Iterate through all resource groups to list VMs
+  local rgs
+  rgs=$(az group list --query "[].name" -o tsv)
+
+  while IFS= read -r rg; do
+    [[ -z "${rg}" ]] && continue
+    is_rg_excluded "${rg}" && continue
+    az vm list -d -g "${rg}" --query "[?powerState=='VM deallocated'].id" -o tsv 2>>"${ERROR_LOG}" || true
+  done <<< "${rgs}"
 }
 
 find_unattached_disks () {
@@ -70,10 +108,11 @@ find_unattached_disks () {
   # Azure CLI 2.79.0+ requires --resource-group, so iterate through all RGs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
-  
+
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
-    az disk list -g "${rg}" --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv 2>/dev/null || true
+    is_rg_excluded "${rg}" && continue
+    az disk list -g "${rg}" --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
 }
 
@@ -83,7 +122,7 @@ find_old_snapshots () {
   local snapshots
 
   # Calculate epoch seconds for 30 days ago
-  cutoff_seconds=$(date -u -d '30 days ago' +%s 2>/dev/null || date -u -v-30d +%s 2>/dev/null)
+  cutoff_seconds=$(date -u -d '30 days ago' +%s 2>>"${ERROR_LOG}" || date -u -v-30d +%s 2>>"${ERROR_LOG}")
 
   # List all snapshots with their creation time
   snapshots=$(az snapshot list --query "[].{id:id,created:timeCreated}" -o tsv)
@@ -94,8 +133,8 @@ find_old_snapshots () {
 
     # Convert ISO 8601 timestamp to epoch seconds for reliable comparison
     # Remove any timezone suffix and convert
-    created_seconds=$(date -u -d "${created_time}" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%S" "${created_time%.*}" +%s 2>/dev/null || echo "0")
-    
+    created_seconds=$(date -u -d "${created_time}" +%s 2>>"${ERROR_LOG}" || date -u -jf "%Y-%m-%dT%H:%M:%S" "${created_time%.*}" +%s 2>>"${ERROR_LOG}" || echo "0")
+
     if [[ ${created_seconds} -gt 0 && ${created_seconds} -lt ${cutoff_seconds} ]]; then
       echo "${snap_id}"
     fi
@@ -143,13 +182,13 @@ find_idle_private_endpoints () {
   eps=$(az network private-endpoint list --query "[].[id,name]" -o tsv)
   while IFS=$'\t' read -r id name; do
     [[ -z "${id}" ]] && continue
-    
+
     # Check both automatic and manual connections for Approved status
     approved=$(az network private-endpoint show --ids "${id}" \
-      --query "contains(privateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>/dev/null || echo "false")
+      --query "contains(privateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>>"${ERROR_LOG}" || echo "false")
     manual_approved=$(az network private-endpoint show --ids "${id}" \
-      --query "contains(manualPrivateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>/dev/null || echo "false")
-    
+      --query "contains(manualPrivateLinkServiceConnections[].privateLinkServiceConnectionState.status, 'Approved')" -o tsv 2>>"${ERROR_LOG}" || echo "false")
+
     # Mark as idle if neither connection type has Approved status
     if [[ "${approved}" != "true" && "${manual_approved}" != "true" ]]; then
       echo "${id}"
@@ -172,7 +211,7 @@ find_orphan_backups () {
       [[ -z "${item_id}" ]] && continue
       # Fetch sourceResourceId via REST (CLI 'show' varies by workload)
       # Using generic az resource show to retrieve properties
-      src=$(az resource show --ids "${item_id}" --query "properties.sourceResourceId" -o tsv 2>/dev/null || echo "")
+      src=$(az resource show --ids "${item_id}" --query "properties.sourceResourceId" -o tsv 2>>"${ERROR_LOG}" || echo "")
       if [[ -z "${src}" ]]; then
         # No source recorded -> treat as orphan candidate
         echo "${item_id}"
@@ -190,30 +229,45 @@ find_idle_sql_pools () {
   # Also tag Azure SQL elastic pools with 0 databases as "idle" candidates
   # Synapse workspaces in this subscription:
   local wslist
-  wslist=$(az synapse workspace list --query "[].name" -o tsv 2>/dev/null || true)
+  wslist=$(az synapse workspace list --query "[].name" -o tsv 2>>"${ERROR_LOG}" || true)
   for ws in ${wslist}; do
     az synapse sql pool list --workspace-name "${ws}" \
-      --query "[?status=='Paused'].id" -o tsv 2>/dev/null || true
+      --query "[?status=='Paused'].id" -o tsv 2>>"${ERROR_LOG}" || true
   done
 
-  # Azure SQL elastic pools - check each pool for database count
-  local pools
-  pools=$(az sql elastic-pool list --query "[].[id,name,resourceGroup,serverName]" -o tsv 2>/dev/null || true)
-  while IFS=$'\t' read -r pool_id pool_name rg server_name; do
-    [[ -z "${pool_id}" ]] && continue
-    # Count databases in this elastic pool
-    local db_count
-    db_count=$(az sql db list -g "${rg}" -s "${server_name}" \
-      --query "length([?elasticPoolName=='${pool_name}'])" -o tsv 2>/dev/null || echo "1")
-    if [[ "${db_count}" == "0" ]]; then
-      echo "${pool_id}"
-    fi
-  done <<< "${pools}"
+  # Azure SQL elastic pools - first find all SQL servers
+  local servers
+  servers=$(az sql server list --query "[].[name,resourceGroup]" -o tsv 2>>"${ERROR_LOG}" || true)
+  while IFS=$'\t' read -r server_name rg; do
+    [[ -z "${server_name}" ]] && continue
+
+    # List elastic pools in this server
+    local pools
+    pools=$(az sql elastic-pool list -g "${rg}" -s "${server_name}" \
+      --query "[].[id,name]" -o tsv 2>>"${ERROR_LOG}" || true)
+
+    while IFS=$'\t' read -r pool_id pool_name; do
+      [[ -z "${pool_id}" ]] && continue
+
+      # Count databases in this elastic pool
+      local db_count
+      db_count=$(az sql db list -g "${rg}" -s "${server_name}" \
+        --query "length([?elasticPoolName=='${pool_name}'])" -o tsv 2>>"${ERROR_LOG}" || echo "1")
+
+      if [[ "${db_count}" == "0" ]]; then
+        echo "${pool_id}"
+      fi
+    done <<< "${pools}"
+  done <<< "${servers}"
 }
 
 ########################
 # Main
 ########################
+
+# Initialize error log file
+: > "${ERROR_LOG}"
+log "Error log file: ${ERROR_LOG}"
 
 # Iterate subscriptions (optionally constrain by MG)
 subs_query="[?state=='Enabled'].id"
@@ -279,3 +333,9 @@ echo "Tip: restrict scope by Management Group with MG_ID, or by AZURE_DEFAULTS_*
 #
 #   Limit scope to a management group (optional):
 #   MG_ID="contoso-mg" APPLY_TAGS=true ./tag-orphan-resources.sh
+#
+#   Exclude specific resource groups (comma-separated, supports wildcards):
+#   EXCLUDE_RGS="NetworkWatcherRG,MC_*,databricks-*" APPLY_TAGS=true ./tag-orphan-resources.sh
+#
+#   Specify custom error log file:
+#   ERROR_LOG="/var/log/azure-orphan-errors.log" ./tag-orphan-resources.sh

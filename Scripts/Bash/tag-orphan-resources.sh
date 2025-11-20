@@ -83,32 +83,26 @@ find_stopped_vms () {
   # Iterate through all resource groups to list VMs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
-  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
-    ((rg_count++))
-    echo -n "." >&2  # Progress indicator
+    printf '\0' >&2  # Keep session alive with invisible character
     az vm list -d -g "${rg}" --query "[?powerState=='VM stopped' || powerState=='' || powerState==null].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
-  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_deallocated_vms () {
   # Iterate through all resource groups to list VMs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
-  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
-    ((rg_count++))
-    echo -n "." >&2  # Progress indicator
+    printf '\0' >&2  # Keep session alive with invisible character
     az vm list -d -g "${rg}" --query "[?powerState=='VM deallocated'].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
-  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_unattached_disks () {
@@ -116,16 +110,13 @@ find_unattached_disks () {
   # Azure CLI 2.79.0+ requires --resource-group, so iterate through all RGs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
-  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
-    ((rg_count++))
-    echo -n "." >&2  # Progress indicator
+    printf '\0' >&2  # Keep session alive with invisible character
     az disk list -g "${rg}" --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
-  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_old_snapshots () {
@@ -137,7 +128,7 @@ find_old_snapshots () {
   cutoff_seconds=$(date -u -d '30 days ago' +%s 2>>"${ERROR_LOG}" || date -u -v-30d +%s 2>>"${ERROR_LOG}")
 
   # List all snapshots with their creation time
-  snapshots=$(az snapshot list --query "[].{id:id,created:timeCreated}" -o tsv)
+  snapshots=$(az snapshot list --query "[].{id:id,created:timeCreated}" -o tsv 2>>"${ERROR_LOG}")
 
   while IFS=$'\t' read -r snap_id created_time; do
     [[ -z "${snap_id}" ]] && continue
@@ -156,17 +147,17 @@ find_old_snapshots () {
 find_unattached_public_ips () {
   # public IPs not attached to a NIC, LB, or NAT Gateway
   # Include both Static and Dynamic unattached IPs
-  az network public-ip list --query "[?ipConfiguration==null && natGateway==null].id" -o tsv
+  az network public-ip list --query "[?ipConfiguration==null && natGateway==null].id" -o tsv 2>>"${ERROR_LOG}" || true
 }
 
 find_unattached_nat_gateways () {
   # NAT Gateways with no subnets attached
-  az network nat gateway list --query "[?subnets==null || length(subnets)==\`0\`].id" -o tsv
+  az network nat gateway list --query "[?subnets==null || length(subnets)==\`0\`].id" -o tsv 2>>"${ERROR_LOG}" || true
 }
 
 find_idle_expressroute_circuits () {
   # Heuristic: circuits with no peerings
-  az network express-route list --query "[?peerings==null || length(peerings)==\`0\` || serviceProviderProvisioningState=='NotProvisioned'].id" -o tsv || true
+  az network express-route list --query "[?peerings==null || length(peerings)==\`0\` || serviceProviderProvisioningState=='NotProvisioned'].id" -o tsv 2>>"${ERROR_LOG}" || true
 }
 
 find_idle_private_dns_zones () {
@@ -174,11 +165,11 @@ find_idle_private_dns_zones () {
   # numberOfRecordSets includes SOA + NS (usually 2); use <=2 as "default-only"
   local zones
   local link_count
-  zones=$(az network private-dns zone list --query "[?numberOfRecordSets<=\`2\`].[name,resourceGroup,id]" -o tsv)
+  zones=$(az network private-dns zone list --query "[?numberOfRecordSets<=\`2\`].[name,resourceGroup,id]" -o tsv 2>>"${ERROR_LOG}")
   while IFS=$'\t' read -r zname zrg zid; do
     [[ -z "${zid}" ]] && continue
     # Check for VNet links
-    link_count=$(az network private-dns link vnet list -g "${zrg}" -z "${zname}" --query "length(@)" -o tsv || echo "0")
+    link_count=$(az network private-dns link vnet list -g "${zrg}" -z "${zname}" --query "length(@)" -o tsv 2>>"${ERROR_LOG}" || echo "0")
     if [[ "${link_count}" == "0" ]]; then
       echo "${zid}"
     fi
@@ -191,7 +182,7 @@ find_idle_private_endpoints () {
   local eps
   local approved
   local manual_approved
-  eps=$(az network private-endpoint list --query "[].[id,name]" -o tsv)
+  eps=$(az network private-endpoint list --query "[].[id,name]" -o tsv 2>>"${ERROR_LOG}")
   while IFS=$'\t' read -r id name; do
     [[ -z "${id}" ]] && continue
 
@@ -214,11 +205,11 @@ find_orphan_backups () {
   local vaults v
   local items
   local src
-  vaults=$(az backup vault list --query "[].{name:name,rg:resourceGroup}" -o tsv || true)
+  vaults=$(az backup vault list --query "[].{name:name,rg:resourceGroup}" -o tsv 2>>"${ERROR_LOG}" || true)
   while IFS=$'\t' read -r vname vrg; do
     [[ -z "${vname}" ]] && continue
     # List items; include deleted if you want to surface soft-deleted as well
-    items=$(az backup item list --vault-name "${vname}" -g "${vrg}" --query "[].id" -o tsv || true)
+    items=$(az backup item list --vault-name "${vname}" -g "${vrg}" --query "[].id" -o tsv 2>>"${ERROR_LOG}" || true)
     while IFS= read -r item_id; do
       [[ -z "${item_id}" ]] && continue
       # Fetch sourceResourceId via REST (CLI 'show' varies by workload)
@@ -241,11 +232,12 @@ find_idle_sql_pools () {
   # Also tag Azure SQL elastic pools with 0 databases as "idle" candidates
   # Synapse workspaces in this subscription:
   local wslist
-  wslist=$(az synapse workspace list --query "[].name" -o tsv 2>>"${ERROR_LOG}" || true)
-  for ws in ${wslist}; do
-    az synapse sql pool list --workspace-name "${ws}" \
+  wslist=$(az synapse workspace list --query "[].[name,resourceGroup]" -o tsv 2>>"${ERROR_LOG}" || true)
+  while IFS=$'\t' read -r wsname rg; do
+    [[ -z "${wsname}" ]] && continue
+    az synapse sql pool list --workspace-name "${wsname}" --resource-group "${rg}" \
       --query "[?status=='Paused'].id" -o tsv 2>>"${ERROR_LOG}" || true
-  done
+  done <<< "${wslist}"
 
   # Azure SQL elastic pools - first find all SQL servers
   local servers
@@ -290,7 +282,7 @@ else
   mapfile -t SUBS < <(az account list --query "${subs_query}" -o tsv)
 fi
 
-log "Found ${#SUBS[@]} enabled subscription(s). APPLY_TAGS=${APPLY_TAGS}, TAG=${TAG_KEY}"
+log "Found ${#SUBS[@]} enabled subscription(s). APPLY_TAGS=${APPLY_TAGS}, TAG=${TAG_KEY}, EXCLUDE_RGS='${EXCLUDE_RGS}'"
 
 for sub in "${SUBS[@]}"; do
   echo

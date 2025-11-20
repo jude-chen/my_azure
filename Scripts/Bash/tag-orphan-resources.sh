@@ -83,24 +83,32 @@ find_stopped_vms () {
   # Iterate through all resource groups to list VMs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
+  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
+    ((rg_count++))
+    echo -n "." >&2  # Progress indicator
     az vm list -d -g "${rg}" --query "[?powerState=='VM stopped' || powerState=='' || powerState==null].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
+  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_deallocated_vms () {
   # Iterate through all resource groups to list VMs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
+  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
+    ((rg_count++))
+    echo -n "." >&2  # Progress indicator
     az vm list -d -g "${rg}" --query "[?powerState=='VM deallocated'].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
+  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_unattached_disks () {
@@ -108,12 +116,16 @@ find_unattached_disks () {
   # Azure CLI 2.79.0+ requires --resource-group, so iterate through all RGs
   local rgs
   rgs=$(az group list --query "[].name" -o tsv)
+  local rg_count=0
 
   while IFS= read -r rg; do
     [[ -z "${rg}" ]] && continue
     is_rg_excluded "${rg}" && continue
+    ((rg_count++))
+    echo -n "." >&2  # Progress indicator
     az disk list -g "${rg}" --query "[?(diskState=='Unattached' || managedBy==null || managedBy=='') && contains(to_string(tags), 'kubernetes.io-created-for-pvc')==\`false\` && contains(to_string(tags), 'ASR-ReplicaDisk')==\`false\` && contains(to_string(tags), 'asrseeddisk')==\`false\` && contains(to_string(tags), 'RSVaultBackup')==\`false\`].id" -o tsv 2>>"${ERROR_LOG}" || true
   done <<< "${rgs}"
+  [[ ${rg_count} -gt 0 ]] && echo >&2  # Newline after progress dots
 }
 
 find_old_snapshots () {
@@ -286,36 +298,47 @@ for sub in "${SUBS[@]}"; do
   az account set --subscription "${sub}"
 
   # 1) VMs stopped
+  log "Checking for stopped VMs..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "vm-stopped"; done < <(find_stopped_vms)
 
   # 2) VMs deallocated
+  log "Checking for deallocated VMs..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "vm-deallocated"; done < <(find_deallocated_vms)
 
   # 3) Unattached managed disks
+  log "Checking for unattached managed disks..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-disk"; done < <(find_unattached_disks)
 
   # 4) Old snapshots (older than 30 days)
+  log "Checking for old snapshots (>30 days)..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "old-snapshot"; done < <(find_old_snapshots)
 
   # 5) Orphan backups (protected items)
+  log "Checking for orphan backup items..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "orphan-backup"; done < <(find_orphan_backups)
 
   # 6) Unattached Public IPs
+  log "Checking for unattached public IPs..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-publicip"; done < <(find_unattached_public_ips)
 
   # 7) Unattached NAT Gateways
+  log "Checking for unattached NAT gateways..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "unattached-natgw"; done < <(find_unattached_nat_gateways)
 
   # 8) Idle ExpressRoute circuits (no peerings)
+  log "Checking for idle ExpressRoute circuits..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-expressroute"; done < <(find_idle_expressroute_circuits)
 
   # 9) Idle Private DNS zones (no VNet links & default-only records)
+  log "Checking for idle private DNS zones..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-privatedns-zone"; done < <(find_idle_private_dns_zones)
 
   # 10) Idle Private Endpoints
+  log "Checking for idle private endpoints..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-private-endpoint"; done < <(find_idle_private_endpoints)
 
   # 11) Idle SQL Pools (Synapse paused, SQL elastic pools with 0 DBs)
+  log "Checking for idle SQL pools..."
   while IFS= read -r id; do [[ -n "$id" ]] && tag_resource "$id" "idle-sql-pool"; done < <(find_idle_sql_pools)
 
 done

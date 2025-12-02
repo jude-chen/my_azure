@@ -43,6 +43,15 @@ tag_resource () {
   local reason="$2"
   local value="${TAG_PREFIX}:${reason}"
 
+  # Check if the tag is already applied
+  local existing_tag
+  existing_tag=$(az resource show --ids "$id" --query "tags.${TAG_KEY}" -o tsv 2>>"${ERROR_LOG}" || echo "")
+
+  if [[ "${existing_tag}" == "${value}" ]]; then
+    log "Skipping (already tagged): ${id}  (${TAG_KEY}=${value})"
+    return 0
+  fi
+
   if [[ "${APPLY_TAGS}" == "true" ]]; then
     if az resource update --ids "$id" --set "tags.${TAG_KEY}=${value}" --only-show-errors 2>>"${ERROR_LOG}" >/dev/null; then
       ok "Tagged: ${id}  (${TAG_KEY}=${value})"

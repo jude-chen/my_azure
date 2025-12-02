@@ -101,7 +101,7 @@ run_arg_query () {
 
 find_stopped_vms () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.compute/virtualmachines'
     | extend powerState = tostring(properties.extended.instanceView.powerState.code)
     | where powerState =~ 'PowerState/stopped' or powerState == '' or isnull(powerState)
@@ -112,7 +112,7 @@ find_stopped_vms () {
 
 find_deallocated_vms () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.compute/virtualmachines'
     | extend powerState = tostring(properties.extended.instanceView.powerState.code)
     | where powerState =~ 'PowerState/deallocated'
@@ -123,7 +123,7 @@ find_deallocated_vms () {
 
 find_unattached_disks () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.compute/disks'
     | where properties.diskState == 'Unattached' or isnull(managedBy) or managedBy == ''
     | where tags !contains 'kubernetes.io-created-for-pvc'
@@ -137,7 +137,7 @@ find_unattached_disks () {
 
 find_old_snapshots () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.compute/snapshots'
     | where todatetime(properties.timeCreated) < ago(30d)
     | project id
@@ -147,7 +147,7 @@ find_old_snapshots () {
 
 find_unattached_public_ips () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.network/publicipaddresses'
     | where isnull(properties.ipConfiguration) and isnull(properties.natGateway)
     | project id
@@ -157,7 +157,7 @@ find_unattached_public_ips () {
 
 find_unattached_nat_gateways () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.network/natgateways'
     | where isnull(properties.subnets) or array_length(properties.subnets) == 0
     | project id
@@ -167,7 +167,7 @@ find_unattached_nat_gateways () {
 
 find_idle_expressroute_circuits () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.network/expressroutecircuits'
     | where isnull(properties.peerings) or array_length(properties.peerings) == 0
        or properties.serviceProviderProvisioningState =~ 'NotProvisioned'
@@ -178,7 +178,7 @@ find_idle_expressroute_circuits () {
 
 find_idle_private_dns_zones () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.network/privatednszones'
     | where properties.numberOfVirtualNetworkLinks == 0
     | project id
@@ -188,7 +188,7 @@ find_idle_private_dns_zones () {
 
 find_idle_private_endpoints () {
   local query="
-    Resources
+    resources
     | where type =~ 'microsoft.network/privateendpoints'
     | extend connection = iff(array_length(properties.manualPrivateLinkServiceConnections) > 0, properties.manualPrivateLinkServiceConnections[0], properties.privateLinkServiceConnections[0])
     | extend stateEnum = tostring(connection.properties.privateLinkServiceConnectionState.status)
@@ -201,7 +201,7 @@ find_idle_private_endpoints () {
 find_idle_synapse_sql_pools () {
   # Synapse Dedicated SQL pools that are Paused
   local synapse_query="
-    Resources
+    resources
     | where type =~ 'microsoft.synapse/workspaces/sqlpools'
     | where properties.status =~ 'Paused'
     | project id
@@ -215,17 +215,17 @@ find_idle_elastic_pools () {
   # This requires a more complex query or separate API calls
   # For now, we'll identify elastic pools and check them separately
   local elastic_pool_query="
-    Resources
+    resources
     | where type =~ 'microsoft.sql/servers/elasticpools'
-    | extend elasticPoolId = tolower(tostring(id)), elasticPoolName = name, elasticPoolRG = resourceGroup,skuName=tostring(sku.name),skuTier=tostring(sku.tier),skuCapacity=tostring(sku.capacity)
+    | extend id = tolower(tostring(id))
     | join kind=leftouter (
-        Resources
+        resources
         | where type =~ 'microsoft.sql/servers/databases'
-        | extend elasticPoolId = tolower(tostring(properties.elasticPoolId))
-      ) on elasticPoolId
-    | summarize databaseCount = countif(isnotempty(elasticPoolId1)) by elasticPoolId, elasticPoolName,serverResourceGroup=resourceGroup,name,skuName,skuTier,skuCapacity,elasticPoolRG
+        | extend id = tolower(tostring(properties.elasticPoolId))
+      ) on id
+    | summarize databaseCount = countif(isnotempty(id1)) by id
     | where databaseCount == 0
-    | project elasticPoolId
+    | project id
   "
   run_arg_query "${elastic_pool_query}" "${1:-}"
 }

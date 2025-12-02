@@ -79,7 +79,7 @@ run_arg_query () {
   if [[ -n "${MG_ID}" ]]; then
     az graph query -q "${query}" --management-groups "${MG_ID}" --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true
   elif [[ -n "${subscriptions}" ]]; then
-    echo "Running query ${query}" >> "${ERROR_LOG}"
+    # echo "Running query ${query}" >> "${ERROR_LOG}"
     az graph query -q "${query}" --subscriptions ${subscriptions} --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true
   else
     az graph query -q "${query}" --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true

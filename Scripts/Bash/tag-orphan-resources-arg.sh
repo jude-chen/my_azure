@@ -77,11 +77,12 @@ run_arg_query () {
   local subscriptions="$2"
 
   if [[ -n "${MG_ID}" ]]; then
-    az graph query -q "${query}" --management-groups "${MG_ID}" -o tsv 2>>"${ERROR_LOG}" || true
+    az graph query -q "${query}" --management-groups "${MG_ID}" --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true
   elif [[ -n "${subscriptions}" ]]; then
-    az graph query -q "${query}" --subscriptions ${subscriptions} -o tsv 2>>"${ERROR_LOG}" || true
+    echo "Running query ${query}" >> "${ERROR_LOG}"
+    az graph query -q "${query}" --subscriptions ${subscriptions} --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true
   else
-    az graph query -q "${query}" -o tsv 2>>"${ERROR_LOG}" || true
+    az graph query -q "${query}" --query "data[].id" -o tsv 2>>"${ERROR_LOG}" || true
   fi
 }
 
@@ -90,7 +91,6 @@ run_arg_query () {
 ########################
 
 find_stopped_vms () {
-  log "Querying stopped VMs via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.compute/virtualmachines'
@@ -102,7 +102,6 @@ find_stopped_vms () {
 }
 
 find_deallocated_vms () {
-  log "Querying deallocated VMs via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.compute/virtualmachines'
@@ -114,7 +113,6 @@ find_deallocated_vms () {
 }
 
 find_unattached_disks () {
-  log "Querying unattached disks via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.compute/disks'
@@ -129,21 +127,16 @@ find_unattached_disks () {
 }
 
 find_old_snapshots () {
-  log "Querying old snapshots (>30 days) via Azure Resource Graph..."
-  local cutoff_date
-  cutoff_date=$(date -u -d '30 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-30d +%Y-%m-%d 2>/dev/null)
-
   local query="
     Resources
     | where type =~ 'microsoft.compute/snapshots'
-    | where tostring(properties.timeCreated) < '${cutoff_date}'
+    | where todatetime(properties.timeCreated) < ago(30d)
     | project id
   "
   run_arg_query "${query}" "${1:-}"
 }
 
 find_unattached_public_ips () {
-  log "Querying unattached public IPs via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.network/publicipaddresses'
@@ -154,7 +147,6 @@ find_unattached_public_ips () {
 }
 
 find_unattached_nat_gateways () {
-  log "Querying unattached NAT gateways via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.network/natgateways'
@@ -165,7 +157,6 @@ find_unattached_nat_gateways () {
 }
 
 find_idle_expressroute_circuits () {
-  log "Querying idle ExpressRoute circuits via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.network/expressroutecircuits'
@@ -177,41 +168,28 @@ find_idle_expressroute_circuits () {
 }
 
 find_idle_private_dns_zones () {
-  log "Querying idle private DNS zones via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.network/privatednszones'
-    | where properties.numberOfRecordSets <= 2
-    | project id, name, resourceGroup
-    | join kind=leftouter (
-        Resources
-        | where type =~ 'microsoft.network/privatednszones/virtualnetworklinks'
-        | project zoneName = tostring(split(id, '/')[8]), linkId = id
-    ) on \$left.name == \$right.zoneName
-    | where isnull(linkId)
+    | where properties.numberOfVirtualNetworkLinks == 0
     | project id
   "
   run_arg_query "${query}" "${1:-}"
 }
 
 find_idle_private_endpoints () {
-  log "Querying idle private endpoints via Azure Resource Graph..."
   local query="
     Resources
     | where type =~ 'microsoft.network/privateendpoints'
-    | extend autoConnections = properties.privateLinkServiceConnections
-    | extend manualConnections = properties.manualPrivateLinkServiceConnections
-    | extend hasApprovedAuto = array_length(autoConnections) > 0 and autoConnections[0].properties.privateLinkServiceConnectionState.status =~ 'Approved'
-    | extend hasApprovedManual = array_length(manualConnections) > 0 and manualConnections[0].properties.privateLinkServiceConnectionState.status =~ 'Approved'
-    | where not(hasApprovedAuto) and not(hasApprovedManual)
+    | extend connection = iff(array_length(properties.manualPrivateLinkServiceConnections) > 0, properties.manualPrivateLinkServiceConnections[0], properties.privateLinkServiceConnections[0])
+    | extend stateEnum = tostring(connection.properties.privateLinkServiceConnectionState.status)
+    | where stateEnum == 'Disconnected'
     | project id
   "
   run_arg_query "${query}" "${1:-}"
 }
 
-find_idle_sql_pools () {
-  log "Querying idle SQL pools via Azure Resource Graph..."
-
+find_idle_synapse_sql_pools () {
   # Synapse Dedicated SQL pools that are Paused
   local synapse_query="
     Resources
@@ -220,7 +198,9 @@ find_idle_sql_pools () {
     | project id
   "
   run_arg_query "${synapse_query}" "${1:-}"
+}
 
+find_idle_elastic_pools () {
   # Azure SQL elastic pools with 0 databases
   # Note: ARG doesn't easily provide database count per elastic pool
   # This requires a more complex query or separate API calls
@@ -228,32 +208,17 @@ find_idle_sql_pools () {
   local elastic_pool_query="
     Resources
     | where type =~ 'microsoft.sql/servers/elasticpools'
-    | project id, poolName = name, serverName = tostring(split(id, '/')[8]), resourceGroup
+    | extend elasticPoolId = tolower(tostring(id)), elasticPoolName = name, elasticPoolRG = resourceGroup,skuName=tostring(sku.name),skuTier=tostring(sku.tier),skuCapacity=tostring(sku.capacity)
+    | join kind=leftouter (
+        Resources
+        | where type =~ 'microsoft.sql/servers/databases'
+        | extend elasticPoolId = tolower(tostring(properties.elasticPoolId))
+      ) on elasticPoolId
+    | summarize databaseCount = countif(isnotempty(elasticPoolId1)) by elasticPoolId, elasticPoolName,serverResourceGroup=resourceGroup,name,skuName,skuTier,skuCapacity,elasticPoolRG
+    | where databaseCount == 0
+    | project elasticPoolId
   "
-
-  # Get elastic pools and check database count
-  local pools
-  pools=$(run_arg_query "${elastic_pool_query}" "${1:-}")
-
-  while IFS=$'\t' read -r pool_id pool_name server_name rg; do
-    [[ -z "${pool_id}" ]] && continue
-
-    # Count databases in this elastic pool using ARG
-    local db_query="
-      Resources
-      | where type =~ 'microsoft.sql/servers/databases'
-      | where resourceGroup =~ '${rg}'
-      | where tostring(split(id, '/')[8]) =~ '${server_name}'
-      | where properties.elasticPoolName =~ '${pool_name}'
-      | count
-    "
-    local db_count
-    db_count=$(run_arg_query "${db_query}" "${1:-}" | tail -1)
-
-    if [[ "${db_count}" == "0" ]]; then
-      echo "${pool_id}"
-    fi
-  done <<< "${pools}"
+  run_arg_query "${elastic_pool_query}" "${1:-}"
 }
 
 ########################
@@ -365,14 +330,23 @@ while IFS= read -r id; do
   tag_resource "$id" "idle-private-endpoint"
 done < <(find_idle_private_endpoints "${SUBSCRIPTION_LIST}")
 
-# 10) Idle SQL Pools (Synapse paused, SQL elastic pools with 0 DBs)
-log "Checking for idle SQL pools..."
+# 10) Idle Synapse SQL Pools (Paused)
+log "Checking for idle Synapse SQL pools..."
 while IFS= read -r id; do
   [[ -z "$id" ]] && continue
   rg=$(echo "$id" | grep -oP '/resourceGroups/\K[^/]+' || echo "")
   [[ -n "${rg}" ]] && is_rg_excluded "${rg}" && continue
-  tag_resource "$id" "idle-sql-pool"
-done < <(find_idle_sql_pools "${SUBSCRIPTION_LIST}")
+  tag_resource "$id" "idle-synapse-sql-pool"
+done < <(find_idle_synapse_sql_pools "${SUBSCRIPTION_LIST}")
+
+# 11) Idle Elastic Pools (0 databases)
+log "Checking for idle elastic pools..."
+while IFS= read -r id; do
+  [[ -z "$id" ]] && continue
+  rg=$(echo "$id" | grep -oP '/resourceGroups/\K[^/]+' || echo "")
+  [[ -n "${rg}" ]] && is_rg_excluded "${rg}" && continue
+  tag_resource "$id" "idle-elastic-pool"
+done < <(find_idle_elastic_pools "${SUBSCRIPTION_LIST}")
 
 echo
 ok "Completed. Set APPLY_TAGS=true to persist tags (current: ${APPLY_TAGS})."

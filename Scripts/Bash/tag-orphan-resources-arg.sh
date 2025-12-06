@@ -45,7 +45,7 @@ tag_resource () {
 
   # Check if the tag is already applied
   local existing_tag
-  existing_tag=$(az resource show --ids "$id" --query "tags.${TAG_KEY}" -o tsv 2>>"${ERROR_LOG}" || echo "")
+  existing_tag=$(az tag list --resource-id "$id" --query "properties.tags.${TAG_KEY}" -o tsv 2>>"${ERROR_LOG}" || echo "")
 
   if [[ "${existing_tag}" == "${value}" ]]; then
     log "Skipping (already tagged): ${id}  (${TAG_KEY}=${value})"
@@ -53,7 +53,7 @@ tag_resource () {
   fi
 
   if [[ "${APPLY_TAGS}" == "true" ]]; then
-    if az resource update --ids "$id" --set "tags.${TAG_KEY}=${value}" --only-show-errors 2>>"${ERROR_LOG}" >/dev/null; then
+    if az tag update --resource-id "$id" --operation Merge --tags "${TAG_KEY}=${value}" --only-show-errors 2>>"${ERROR_LOG}" >/dev/null; then
       ok "Tagged: ${id}  (${TAG_KEY}=${value})"
     else
       warn "Failed to tag: ${id} — check permissions/provider support"
